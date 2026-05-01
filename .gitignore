@@ -1,0 +1,23 @@
+.env
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+.pytest_cache/
+
+# Local/generated data
+/data/
+*.parquet
+*.bi5
+*.zip
+
+# Logs and temp files
+*.log
+*.tmp
+
+# OS/IDE
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
