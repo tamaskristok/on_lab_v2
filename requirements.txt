@@ -1,0 +1,7 @@
+pandas>=2.2
+pyarrow>=15
+requests>=2.31
+azure-storage-blob>=12.19
+python-dotenv>=1.0
+jupyterlab>=4.0
+ipykernel>=6.0

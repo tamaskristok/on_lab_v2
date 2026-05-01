@@ -1,0 +1,14 @@
+services:
+  on-lab-v2:
+    build: .
+    container_name: on-lab-v2
+    working_dir: /app
+    env_file:
+      - .env
+    ports:
+      - "8888:8888"
+    volumes:
+      - .:/app
+      - ./data:/app/data
+    environment:
+      - PYTHONPATH=/app
