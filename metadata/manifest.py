@@ -19,7 +19,24 @@ def build_manifest(
     parquet_file_path: Path,
     validation_result,
     ohlcv_df: pd.DataFrame,
+    ingestion_errors: list[dict] | None = None,
 ) -> dict:
+    if ingestion_errors is None:
+        ingestion_errors = []
+
+    normalized_ingestion_errors = []
+
+    for error in ingestion_errors:
+        normalized_error = {}
+
+        for key, value in error.items():
+            if hasattr(value, "isoformat"):
+                normalized_error[key] = value.isoformat()
+            else:
+                normalized_error[key] = value
+
+        normalized_ingestion_errors.append(normalized_error)
+
     return {
         "metadata": {
             "provider": provider,
@@ -53,6 +70,10 @@ def build_manifest(
                 if validation_result.max_timestamp is not None
                 else None
             ),
+        },
+        "ingestion": {
+            "error_count": len(normalized_ingestion_errors),
+            "errors": normalized_ingestion_errors,
         },
         "data": {
             "row_count": len(ohlcv_df),

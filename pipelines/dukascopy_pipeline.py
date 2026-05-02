@@ -370,6 +370,7 @@ def run_dukascopy_plan_item(
         parquet_file_path=bronze_path,
         validation_result=validation_result,
         ohlcv_df=ohlcv_df,
+        ingestion_errors=errors,
     )
 
     manifest_path = write_manifest(
