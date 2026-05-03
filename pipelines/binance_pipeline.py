@@ -1,8 +1,6 @@
-
 from __future__ import annotations
 
 import time
-
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -12,7 +10,7 @@ from metadata.manifest import build_manifest, write_manifest
 from metadata.success_marker import write_success_marker
 from paths.data_paths import build_data_paths
 from planner.download_plan import DownloadPlanItem
-from providers.binance import BinanceProvider, BinanceRequest
+from providers.binance import BinanceDownloadResult, BinanceProvider, BinanceRequest
 from transformers.binance_ohlcv import transform_binance_csv_to_ohlcv
 from uploaders.azure_blob import blob_exists, upload_file
 from validators.binance_csv import validate_binance_csv
@@ -30,6 +28,33 @@ class PipelineResult:
     message: str
 
 
+def download_binance_with_retry(
+    *,
+    provider: BinanceProvider,
+    request: BinanceRequest,
+    output_dir: Path,
+    max_attempts: int = 2,
+    retry_sleep_sec: int = 2,
+) -> BinanceDownloadResult:
+    last_error: Exception | None = None
+
+    for attempt in range(1, max_attempts + 1):
+        try:
+            return provider.download(
+                request=request,
+                output_dir=output_dir,
+            )
+        except Exception as error:
+            last_error = error
+
+            if attempt < max_attempts:
+                time.sleep(retry_sleep_sec)
+
+    raise RuntimeError(
+        f"Binance download failed after {max_attempts} attempts: {last_error}"
+    )
+
+
 def run_binance_plan_item(
     *,
     item: DownloadPlanItem,
@@ -38,6 +63,8 @@ def run_binance_plan_item(
     container_name: str,
     data_dir: Path = Path("data"),
     overwrite: bool = True,
+    max_attempts: int = 2,
+    retry_sleep_sec: int = 2,
 ) -> PipelineResult:
     paths = build_data_paths(
         item=item,
@@ -72,9 +99,12 @@ def run_binance_plan_item(
         month=month,
     )
 
-    download_result = provider.download(
+    download_result = download_binance_with_retry(
+        provider=provider,
         request=request,
         output_dir=paths.local_raw_file.parent,
+        max_attempts=max_attempts,
+        retry_sleep_sec=retry_sleep_sec,
     )
 
     csv_path = download_result.files[0]
@@ -151,6 +181,7 @@ def run_binance_plan_item(
         message="Raw and bronze files uploaded successfully.",
     )
 
+
 def run_binance_plan(
     *,
     plan: list[DownloadPlanItem],
@@ -159,6 +190,8 @@ def run_binance_plan(
     container_name: str,
     data_dir: Path = Path("data"),
     overwrite: bool = True,
+    max_attempts: int = 2,
+    retry_sleep_sec: int = 2,
 ) -> list[PipelineResult]:
     results: list[PipelineResult] = []
 
@@ -170,6 +203,8 @@ def run_binance_plan(
             container_name=container_name,
             data_dir=data_dir,
             overwrite=overwrite,
+            max_attempts=max_attempts,
+            retry_sleep_sec=retry_sleep_sec,
         )
 
         results.append(result)

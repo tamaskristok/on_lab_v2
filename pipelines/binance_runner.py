@@ -20,6 +20,8 @@ def run_binance_from_config(
     data_dir: Path = Path("data"),
     start_index: int = 0,
     limit: int | None = None,
+    max_attempts: int = 2,
+    retry_sleep_sec: int = 2,
 ) -> list[PipelineResult]:
     broker_strategy_df = load_broker_strategy(config_dir)
     broker_asset_matrix_df = load_broker_asset_matrix(config_dir)
@@ -57,4 +59,6 @@ def run_binance_from_config(
         blob_service_client=blob_service_client,
         container_name=container_name,
         data_dir=data_dir,
+        max_attempts=max_attempts,
+        retry_sleep_sec=retry_sleep_sec,
     )
