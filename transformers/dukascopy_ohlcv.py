@@ -3,6 +3,13 @@ from __future__ import annotations
 import pandas as pd
 
 
+def _normalize_resample_interval(interval: str) -> str:
+    if interval.endswith("m") and interval[:-1].isdigit():
+        return f"{interval[:-1]}min"
+
+    return interval
+
+
 def transform_dukascopy_ticks_to_ohlcv(
     ticks_df: pd.DataFrame,
     interval: str = "1min",
@@ -75,9 +82,11 @@ def transform_dukascopy_ticks_to_ohlcv(
     df["mid"] = (df["bid"] + df["ask"]) / 2
     df["volume"] = df["bid_volume"] + df["ask_volume"]
 
+    resample_interval = _normalize_resample_interval(interval)
+
     ohlcv = (
         df.set_index("timestamp")
-        .resample(interval)
+        .resample(resample_interval)
         .agg(
             open=("mid", "first"),
             high=("mid", "max"),

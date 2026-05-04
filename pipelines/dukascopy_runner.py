@@ -8,7 +8,14 @@ from config_loader.csv_config import (
     load_broker_strategy,
     load_download_period,
 )
-from pipelines.dukascopy_pipeline import DukascopyPipelineResult, run_dukascopy_plan
+from pipelines.binance_runner import _build_month_date_range
+from pipelines.dukascopy_pipeline import (
+    DEFAULT_DUKASCOPY_MAX_ATTEMPTS,
+    DEFAULT_DUKASCOPY_RETRY_SLEEP_SEC,
+    DEFAULT_DUKASCOPY_TIMEOUT_SEC,
+    DukascopyPipelineResult,
+    run_dukascopy_plan,
+)
 from planner.download_plan import build_download_plan
 from uploaders.azure_blob import init_azure_client
 
@@ -36,20 +43,29 @@ def run_dukascopy_from_config(
     data_dir: Path = Path("data"),
     start_index: int = 0,
     limit: int | None = None,
-    timeout_sec: int = 10,
-    max_attempts: int = 2,
-    retry_sleep_sec: int = 2,
+    timeout_sec: int = DEFAULT_DUKASCOPY_TIMEOUT_SEC,
+    max_attempts: int = DEFAULT_DUKASCOPY_MAX_ATTEMPTS,
+    retry_sleep_sec: int = DEFAULT_DUKASCOPY_RETRY_SLEEP_SEC,
     print_progress: bool = True,
+    start_month: str | None = None,
+    end_month: str | None = None,
 ) -> list[DukascopyPipelineResult]:
     broker_strategy_df = load_broker_strategy(config_dir)
     broker_asset_matrix_df = load_broker_asset_matrix(config_dir)
     download_period_df = load_download_period(config_dir)
     broker_asset_settings_df = load_broker_asset_settings(config_dir)
 
+    start_date, end_date = _build_month_date_range(
+        start_month=start_month,
+        end_month=end_month,
+    )
+
     plan = build_download_plan(
         broker_strategy_df=broker_strategy_df,
         broker_asset_matrix_df=broker_asset_matrix_df,
         download_period_df=download_period_df,
+        start_date=start_date,
+        end_date=end_date,
     )
 
     dukascopy_plan = [

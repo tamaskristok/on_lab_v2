@@ -37,6 +37,23 @@ def build_manifest(
 
         normalized_ingestion_errors.append(normalized_error)
 
+    if "timestamp" not in ohlcv_df.columns:
+        min_data_timestamp = None
+        max_data_timestamp = None
+    else:
+        data_timestamps = pd.to_datetime(
+            ohlcv_df["timestamp"],
+            utc=True,
+            errors="coerce",
+        ).dropna()
+
+        if data_timestamps.empty:
+            min_data_timestamp = None
+            max_data_timestamp = None
+        else:
+            min_data_timestamp = data_timestamps.min().isoformat()
+            max_data_timestamp = data_timestamps.max().isoformat()
+
     return {
         "metadata": {
             "provider": provider,
@@ -77,8 +94,8 @@ def build_manifest(
         },
         "data": {
             "row_count": len(ohlcv_df),
-            "min_timestamp": ohlcv_df["timestamp"].min().isoformat(),
-            "max_timestamp": ohlcv_df["timestamp"].max().isoformat(),
+            "min_timestamp": min_data_timestamp,
+            "max_timestamp": max_data_timestamp,
             "columns": list(ohlcv_df.columns),
         },
     }

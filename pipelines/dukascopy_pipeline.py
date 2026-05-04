@@ -29,6 +29,11 @@ from writers.dukascopy_raw_parquet import write_dukascopy_raw_ticks_to_parquet
 from writers.ohlcv_parquet import write_ohlcv_to_parquet
 
 
+DEFAULT_DUKASCOPY_TIMEOUT_SEC = 30
+DEFAULT_DUKASCOPY_MAX_ATTEMPTS = 2
+DEFAULT_DUKASCOPY_RETRY_SLEEP_SEC = 1
+
+
 @dataclass(frozen=True)
 class DukascopyPipelineResult:
     status: str
@@ -46,8 +51,8 @@ def download_dukascopy_hour_with_retry(
     provider: DukascopyProvider,
     request: DukascopyRequest,
     output_dir: Path,
-    max_attempts: int = 2,
-    retry_sleep_sec: int = 2,
+    max_attempts: int = DEFAULT_DUKASCOPY_MAX_ATTEMPTS,
+    retry_sleep_sec: int = DEFAULT_DUKASCOPY_RETRY_SLEEP_SEC,
 ) -> tuple[DukascopyDownloadResult | None, dict | None]:
     last_error: Exception | None = None
 
@@ -79,9 +84,9 @@ def download_dukascopy_day(
     symbol: str,
     day_start: datetime,
     output_dir: Path,
-    timeout_sec: int = 10,
-    max_attempts: int = 2,
-    retry_sleep_sec: int = 2,
+    timeout_sec: int = DEFAULT_DUKASCOPY_TIMEOUT_SEC,
+    max_attempts: int = DEFAULT_DUKASCOPY_MAX_ATTEMPTS,
+    retry_sleep_sec: int = DEFAULT_DUKASCOPY_RETRY_SLEEP_SEC,
     print_progress: bool = False,
 ) -> tuple[list[DukascopyDownloadResult], list[dict]]:
     provider = DukascopyProvider(timeout_sec=timeout_sec)
@@ -129,7 +134,6 @@ def download_dukascopy_day(
     return downloads, errors
 
 
-
 def build_dukascopy_day_raw_ticks(
     *,
     downloads: list[DukascopyDownloadResult],
@@ -147,9 +151,9 @@ def build_dukascopy_raw_ticks_for_window(
     window: TimeWindow,
     staging_dir: Path,
     price_scale: int,
-    timeout_sec: int = 10,
-    max_attempts: int = 2,
-    retry_sleep_sec: int = 2,
+    timeout_sec: int = DEFAULT_DUKASCOPY_TIMEOUT_SEC,
+    max_attempts: int = DEFAULT_DUKASCOPY_MAX_ATTEMPTS,
+    retry_sleep_sec: int = DEFAULT_DUKASCOPY_RETRY_SLEEP_SEC,
     print_progress: bool = True,
 ) -> tuple[pd.DataFrame, list[dict]]:
     current_day = datetime(
@@ -253,9 +257,9 @@ def run_dukascopy_plan_item(
     blob_service_client: BlobServiceClient,
     container_name: str,
     data_dir: Path = Path("data"),
-    timeout_sec: int = 10,
-    max_attempts: int = 2,
-    retry_sleep_sec: int = 2,
+    timeout_sec: int = DEFAULT_DUKASCOPY_TIMEOUT_SEC,
+    max_attempts: int = DEFAULT_DUKASCOPY_MAX_ATTEMPTS,
+    retry_sleep_sec: int = DEFAULT_DUKASCOPY_RETRY_SLEEP_SEC,
     overwrite: bool = True,
     print_progress: bool = True,
 ) -> DukascopyPipelineResult:
@@ -343,7 +347,7 @@ def run_dukascopy_plan_item(
 
     ohlcv_df = transform_dukascopy_ticks_to_ohlcv(
         ticks_df=ticks_df,
-        interval="1min",
+        interval=interval,
     )
 
     bronze_path = write_ohlcv_to_parquet(
@@ -418,9 +422,9 @@ def run_dukascopy_plan(
     blob_service_client: BlobServiceClient,
     container_name: str,
     data_dir: Path = Path("data"),
-    timeout_sec: int = 10,
-    max_attempts: int = 2,
-    retry_sleep_sec: int = 2,
+    timeout_sec: int = DEFAULT_DUKASCOPY_TIMEOUT_SEC,
+    max_attempts: int = DEFAULT_DUKASCOPY_MAX_ATTEMPTS,
+    retry_sleep_sec: int = DEFAULT_DUKASCOPY_RETRY_SLEEP_SEC,
     overwrite: bool = True,
     print_progress: bool = True,
 ) -> list[DukascopyPipelineResult]:

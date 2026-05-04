@@ -35,24 +35,32 @@ def download_binance_with_retry(
     output_dir: Path,
     max_attempts: int = 2,
     retry_sleep_sec: int = 2,
-) -> BinanceDownloadResult:
+) -> tuple[BinanceDownloadResult | None, dict | None]:
     last_error: Exception | None = None
 
     for attempt in range(1, max_attempts + 1):
         try:
-            return provider.download(
+            result = provider.download(
                 request=request,
                 output_dir=output_dir,
             )
+
+            return result, None
+
         except Exception as error:
             last_error = error
 
             if attempt < max_attempts:
                 time.sleep(retry_sleep_sec)
 
-    raise RuntimeError(
-        f"Binance download failed after {max_attempts} attempts: {last_error}"
-    )
+    return None, {
+        "symbol": request.symbol,
+        "interval": request.interval,
+        "year": request.year,
+        "month": request.month,
+        "attempts": max_attempts,
+        "error": str(last_error),
+    }
 
 
 def run_binance_plan_item(
@@ -99,13 +107,24 @@ def run_binance_plan_item(
         month=month,
     )
 
-    download_result = download_binance_with_retry(
+    download_result, download_error = download_binance_with_retry(
         provider=provider,
         request=request,
         output_dir=paths.local_raw_file.parent,
         max_attempts=max_attempts,
         retry_sleep_sec=retry_sleep_sec,
     )
+
+    if download_error is not None or download_result is None:
+        return PipelineResult(
+            status="failed",
+            broker=item.broker,
+            asset=item.asset,
+            broker_symbol=item.broker_symbol,
+            year=year,
+            month=month,
+            message=f"Binance download failed: {download_error}",
+        )
 
     csv_path = download_result.files[0]
 

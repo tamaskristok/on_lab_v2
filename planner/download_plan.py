@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
 
 import pandas as pd
 
@@ -22,11 +22,17 @@ def build_download_plan(
     broker_strategy_df: pd.DataFrame,
     broker_asset_matrix_df: pd.DataFrame,
     download_period_df: pd.DataFrame,
+    start_date: date | None = None,
+    end_date: date | None = None,
 ) -> list[DownloadPlanItem]:
-    period = download_period_df.iloc[0]
+    if (start_date is None) != (end_date is None):
+        raise ValueError("start_date and end_date must be provided together")
 
-    start_date = datetime.strptime(period["start_date"], "%Y-%m-%d").date()
-    end_date = datetime.strptime(period["end_date"], "%Y-%m-%d").date()
+    if start_date is None or end_date is None:
+        period = download_period_df.iloc[0]
+
+        start_date = datetime.strptime(period["start_date"], "%Y-%m-%d").date()
+        end_date = datetime.strptime(period["end_date"], "%Y-%m-%d").date()
 
     plan: list[DownloadPlanItem] = []
 
