@@ -9,6 +9,7 @@ from config_loader.csv_config import (
     load_broker_asset_settings,
     load_broker_strategy,
     load_download_period,
+    load_saxo_bank_instruments,
 )
 from pipelines.binance_pipeline import run_binance_plan
 from pipelines.binance_runner import _build_month_date_range
@@ -19,6 +20,15 @@ from pipelines.dukascopy_pipeline import (
     run_dukascopy_plan,
 )
 from pipelines.dukascopy_runner import build_price_scale_by_asset
+from pipelines.saxo_bank_pipeline import (
+    DEFAULT_SAXO_BANK_BASE_URL,
+    DEFAULT_SAXO_BANK_HORIZON,
+    DEFAULT_SAXO_BANK_MAX_ATTEMPTS,
+    DEFAULT_SAXO_BANK_RETRY_SLEEP_SEC,
+    DEFAULT_SAXO_BANK_TIMEOUT_SEC,
+    build_saxo_bank_instrument_by_asset,
+    run_saxo_bank_plan,
+)
 from planner.download_plan import DownloadPlanItem, build_download_plan
 from uploaders.azure_blob import init_azure_client
 
@@ -99,6 +109,12 @@ def _results_to_dataframe(results: list) -> pd.DataFrame:
     )
 
 
+def _requires_saxo_bank(
+    brokers: list[str] | None,
+) -> bool:
+    return brokers is None or "saxo_bank" in brokers
+
+
 def run_monthly_ingestion_from_config(
     *,
     start_month: str | None = None,
@@ -115,11 +131,22 @@ def run_monthly_ingestion_from_config(
     dukascopy_max_attempts: int = DEFAULT_DUKASCOPY_MAX_ATTEMPTS,
     dukascopy_retry_sleep_sec: int = DEFAULT_DUKASCOPY_RETRY_SLEEP_SEC,
     dukascopy_print_progress: bool = True,
+    saxo_access_token: str | None = None,
+    saxo_base_url: str = DEFAULT_SAXO_BANK_BASE_URL,
+    saxo_timeout_sec: int = DEFAULT_SAXO_BANK_TIMEOUT_SEC,
+    saxo_horizon: int = DEFAULT_SAXO_BANK_HORIZON,
+    saxo_max_attempts: int = DEFAULT_SAXO_BANK_MAX_ATTEMPTS,
+    saxo_retry_sleep_sec: int = DEFAULT_SAXO_BANK_RETRY_SLEEP_SEC,
+    saxo_print_progress: bool = True,
 ) -> pd.DataFrame:
+    if _requires_saxo_bank(brokers) and not saxo_access_token:
+        raise ValueError("saxo_access_token is required when running saxo_bank")
+
     broker_strategy_df = load_broker_strategy(config_dir)
     broker_asset_matrix_df = load_broker_asset_matrix(config_dir)
     download_period_df = load_download_period(config_dir)
     broker_asset_settings_df = load_broker_asset_settings(config_dir)
+    saxo_bank_instruments_df = load_saxo_bank_instruments(config_dir)
 
     start_date, end_date = _build_month_date_range(
         start_month=start_month,
@@ -162,6 +189,10 @@ def run_monthly_ingestion_from_config(
         broker="dukascopy",
     )
 
+    saxo_instrument_by_asset = build_saxo_bank_instrument_by_asset(
+        saxo_bank_instruments_df=saxo_bank_instruments_df,
+    )
+
     all_results = []
 
     for year, month in month_keys:
@@ -183,6 +214,11 @@ def run_monthly_ingestion_from_config(
             broker="dukascopy",
         )
 
+        saxo_bank_plan = _filter_plan_by_broker(
+            plan=month_plan,
+            broker="saxo_bank",
+        )
+
         if binance_plan:
             print("Binance indul...")
 
@@ -198,7 +234,7 @@ def run_monthly_ingestion_from_config(
 
             all_results.extend(binance_results)
         else:
-            print("Binance: nincs futtatandó item.")
+            print("Binance: nincs futtatando item.")
 
         if dukascopy_plan:
             print("Dukascopy indul...")
@@ -218,6 +254,29 @@ def run_monthly_ingestion_from_config(
 
             all_results.extend(dukascopy_results)
         else:
-            print("Dukascopy: nincs futtatandó item.")
+            print("Dukascopy: nincs futtatando item.")
+
+        if saxo_bank_plan:
+            print("Saxo Bank indul...")
+
+            saxo_bank_results = run_saxo_bank_plan(
+                plan=saxo_bank_plan,
+                interval=interval,
+                instrument_by_asset=saxo_instrument_by_asset,
+                access_token=saxo_access_token,
+                blob_service_client=blob_service_client,
+                container_name=container_name,
+                base_url=saxo_base_url,
+                data_dir=data_dir,
+                timeout_sec=saxo_timeout_sec,
+                horizon=saxo_horizon,
+                max_attempts=saxo_max_attempts,
+                retry_sleep_sec=saxo_retry_sleep_sec,
+                print_progress=saxo_print_progress,
+            )
+
+            all_results.extend(saxo_bank_results)
+        else:
+            print("Saxo Bank: nincs futtatando item.")
 
     return _results_to_dataframe(all_results)

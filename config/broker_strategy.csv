@@ -3,5 +3,4 @@ binance,monthly,true,2,Monthly public ZIP files from Binance Vision
 #dukascopy,daily,true,5,Historical data with smaller request windows
 dukascopy,monthly,true,5,Historical data from hourly BI5 files
 #interactive_brokers,daily,false,10,Later
-#saxo_bank,daily,false,10,Later
-#oanda,daily,false,10,Not enough old historical data
+saxo_bank,monthly,true,5,Saxo Bank chart API half-day windows

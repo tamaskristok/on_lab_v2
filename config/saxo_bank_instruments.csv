@@ -1,0 +1,4 @@
+asset,symbol,uic,asset_type,volume_policy
+EURUSD,EURUSD,21,FxSpot,missing
+XAUUSD,XAUUSD,8176,FxSpot,missing
+XAGUSD,XAGUSD,8177,FxSpot,missing

@@ -36,6 +36,18 @@ class DukascopyBronzePaths:
     success_blob_name: str
 
 
+@dataclass(frozen=True)
+class SaxoBankPaths:
+    local_raw_chart_file: Path
+    local_bronze_parquet_file: Path
+    local_manifest_file: Path
+    local_success_file: Path
+
+    raw_chart_blob_name: str
+    bronze_parquet_blob_name: str
+    manifest_blob_name: str
+    success_blob_name: str
+
 
 def build_data_paths(
     item: DownloadPlanItem,
@@ -177,6 +189,70 @@ def build_dukascopy_bronze_paths(
         local_bronze_parquet_file=local_bronze_parquet_file,
         local_manifest_file=local_manifest_file,
         local_success_file=local_success_file,
+        bronze_parquet_blob_name=bronze_parquet_blob_name,
+        manifest_blob_name=manifest_blob_name,
+        success_blob_name=success_blob_name,
+    )
+
+
+def build_saxo_bank_paths(
+    *,
+    broker: str,
+    asset: str,
+    broker_symbol: str,
+    interval: str,
+    year: int,
+    month: int,
+    data_dir: Path = Path("data"),
+) -> SaxoBankPaths:
+    month_text = f"{month:02d}"
+    asset_folder = asset.lower()
+
+    raw_file_name = f"{broker_symbol}-chart-{year}-{month_text}.parquet"
+    bronze_file_name = f"{broker_symbol}-{interval}-{year}-{month_text}.parquet"
+
+    local_raw_chart_file = (
+        data_dir
+        / "raw"
+        / broker
+        / asset_folder
+        / str(year)
+        / month_text
+        / raw_file_name
+    )
+
+    local_bronze_dir = (
+        data_dir
+        / "bronze"
+        / broker
+        / asset_folder
+        / str(year)
+        / month_text
+    )
+
+    local_bronze_parquet_file = local_bronze_dir / bronze_file_name
+    local_manifest_file = local_bronze_dir / "_MANIFEST.json"
+    local_success_file = local_bronze_dir / "_SUCCESS"
+
+    raw_chart_blob_name = (
+        f"raw/{broker}/{asset_folder}/{year}/{month_text}/{raw_file_name}"
+    )
+    bronze_parquet_blob_name = (
+        f"bronze/{broker}/{asset_folder}/{year}/{month_text}/{bronze_file_name}"
+    )
+    manifest_blob_name = (
+        f"bronze/{broker}/{asset_folder}/{year}/{month_text}/_MANIFEST.json"
+    )
+    success_blob_name = (
+        f"bronze/{broker}/{asset_folder}/{year}/{month_text}/_SUCCESS"
+    )
+
+    return SaxoBankPaths(
+        local_raw_chart_file=local_raw_chart_file,
+        local_bronze_parquet_file=local_bronze_parquet_file,
+        local_manifest_file=local_manifest_file,
+        local_success_file=local_success_file,
+        raw_chart_blob_name=raw_chart_blob_name,
         bronze_parquet_blob_name=bronze_parquet_blob_name,
         manifest_blob_name=manifest_blob_name,
         success_blob_name=success_blob_name,

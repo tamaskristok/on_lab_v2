@@ -31,3 +31,10 @@ def load_broker_asset_settings(config_dir: Path) -> pd.DataFrame:
         config_dir / "broker_asset_settings.csv",
         comment="#",
     )
+
+
+def load_saxo_bank_instruments(config_dir: Path) -> pd.DataFrame:
+    return pd.read_csv(
+        config_dir / "saxo_bank_instruments.csv",
+        comment="#",
+    )
