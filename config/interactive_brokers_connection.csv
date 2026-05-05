@@ -1,0 +1,2 @@
+host,port,client_id,readonly,timeout_sec
+host.docker.internal,7497,120,true,30

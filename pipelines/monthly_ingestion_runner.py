@@ -9,6 +9,7 @@ from config_loader.csv_config import (
     load_broker_asset_settings,
     load_broker_strategy,
     load_download_period,
+    load_interactive_brokers_instruments,
     load_saxo_bank_instruments,
 )
 from pipelines.binance_pipeline import run_binance_plan
@@ -29,6 +30,19 @@ from pipelines.saxo_bank_pipeline import (
     build_saxo_bank_instrument_by_asset,
     run_saxo_bank_plan,
 )
+from pipelines.interactive_brokers_pipeline import (
+    DEFAULT_INTERACTIVE_BROKERS_BAR_SIZE,
+    DEFAULT_INTERACTIVE_BROKERS_CLIENT_ID,
+    DEFAULT_INTERACTIVE_BROKERS_HOST,
+    DEFAULT_INTERACTIVE_BROKERS_MAX_ATTEMPTS,
+    DEFAULT_INTERACTIVE_BROKERS_PORT,
+    DEFAULT_INTERACTIVE_BROKERS_REQUEST_SLEEP_SEC,
+    DEFAULT_INTERACTIVE_BROKERS_RETRY_SLEEP_SEC,
+    DEFAULT_INTERACTIVE_BROKERS_TIMEOUT_SEC,
+    build_interactive_brokers_instrument_by_asset,
+    run_interactive_brokers_plan,
+)
+
 from planner.download_plan import DownloadPlanItem, build_download_plan
 from uploaders.azure_blob import init_azure_client
 
@@ -138,6 +152,17 @@ def run_monthly_ingestion_from_config(
     saxo_max_attempts: int = DEFAULT_SAXO_BANK_MAX_ATTEMPTS,
     saxo_retry_sleep_sec: int = DEFAULT_SAXO_BANK_RETRY_SLEEP_SEC,
     saxo_print_progress: bool = True,
+    interactive_brokers_host: str = DEFAULT_INTERACTIVE_BROKERS_HOST,
+    interactive_brokers_port: int = DEFAULT_INTERACTIVE_BROKERS_PORT,
+    interactive_brokers_client_id: int = DEFAULT_INTERACTIVE_BROKERS_CLIENT_ID,
+    interactive_brokers_readonly: bool = True,
+    interactive_brokers_timeout_sec: int = DEFAULT_INTERACTIVE_BROKERS_TIMEOUT_SEC,
+    interactive_brokers_bar_size: str = DEFAULT_INTERACTIVE_BROKERS_BAR_SIZE,
+    interactive_brokers_max_attempts: int = DEFAULT_INTERACTIVE_BROKERS_MAX_ATTEMPTS,
+    interactive_brokers_retry_sleep_sec: int = DEFAULT_INTERACTIVE_BROKERS_RETRY_SLEEP_SEC,
+    interactive_brokers_request_sleep_sec: int = DEFAULT_INTERACTIVE_BROKERS_REQUEST_SLEEP_SEC,
+    interactive_brokers_print_progress: bool = True,
+
 ) -> pd.DataFrame:
     if _requires_saxo_bank(brokers) and not saxo_access_token:
         raise ValueError("saxo_access_token is required when running saxo_bank")
@@ -147,6 +172,7 @@ def run_monthly_ingestion_from_config(
     download_period_df = load_download_period(config_dir)
     broker_asset_settings_df = load_broker_asset_settings(config_dir)
     saxo_bank_instruments_df = load_saxo_bank_instruments(config_dir)
+    interactive_brokers_instruments_df = load_interactive_brokers_instruments(config_dir)
 
     start_date, end_date = _build_month_date_range(
         start_month=start_month,
@@ -193,6 +219,10 @@ def run_monthly_ingestion_from_config(
         saxo_bank_instruments_df=saxo_bank_instruments_df,
     )
 
+    interactive_brokers_instrument_by_asset = build_interactive_brokers_instrument_by_asset(
+        interactive_brokers_instruments_df=interactive_brokers_instruments_df,
+    )
+
     all_results = []
 
     for year, month in month_keys:
@@ -218,6 +248,12 @@ def run_monthly_ingestion_from_config(
             plan=month_plan,
             broker="saxo_bank",
         )
+
+        interactive_brokers_plan = _filter_plan_by_broker(
+            plan=month_plan,
+            broker="interactive_brokers",
+        )
+
 
         if binance_plan:
             print("Binance indul...")
@@ -278,5 +314,32 @@ def run_monthly_ingestion_from_config(
             all_results.extend(saxo_bank_results)
         else:
             print("Saxo Bank: nincs futtatando item.")
+
+        if interactive_brokers_plan:
+            print("Interactive Brokers indul...")
+
+            interactive_brokers_results = run_interactive_brokers_plan(
+                plan=interactive_brokers_plan,
+                interval=interval,
+                instrument_by_asset=interactive_brokers_instrument_by_asset,
+                blob_service_client=blob_service_client,
+                container_name=container_name,
+                host=interactive_brokers_host,
+                port=interactive_brokers_port,
+                client_id=interactive_brokers_client_id,
+                readonly=interactive_brokers_readonly,
+                timeout_sec=interactive_brokers_timeout_sec,
+                data_dir=data_dir,
+                bar_size=interactive_brokers_bar_size,
+                max_attempts=interactive_brokers_max_attempts,
+                retry_sleep_sec=interactive_brokers_retry_sleep_sec,
+                request_sleep_sec=interactive_brokers_request_sleep_sec,
+                print_progress=interactive_brokers_print_progress,
+            )
+
+            all_results.extend(interactive_brokers_results)
+        else:
+            print("Interactive Brokers: nincs futtatando item.")
+
 
     return _results_to_dataframe(all_results)

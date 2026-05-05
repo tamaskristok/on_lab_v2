@@ -2,5 +2,5 @@ broker,window_type,enabled,rate_limit_sleep_sec,notes
 binance,monthly,true,2,Monthly public ZIP files from Binance Vision
 #dukascopy,daily,true,5,Historical data with smaller request windows
 dukascopy,monthly,true,5,Historical data from hourly BI5 files
-#interactive_brokers,daily,false,10,Later
+interactive_brokers,monthly,true,5,Interactive Brokers historical bars with two-week request windows
 saxo_bank,monthly,true,5,Saxo Bank chart API half-day windows

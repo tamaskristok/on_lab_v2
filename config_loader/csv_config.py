@@ -38,3 +38,17 @@ def load_saxo_bank_instruments(config_dir: Path) -> pd.DataFrame:
         config_dir / "saxo_bank_instruments.csv",
         comment="#",
     )
+
+
+def load_interactive_brokers_instruments(config_dir: Path) -> pd.DataFrame:
+    return pd.read_csv(
+        config_dir / "interactive_brokers_instruments.csv",
+        comment="#",
+    )
+
+
+def load_interactive_brokers_connection(config_dir: Path) -> pd.DataFrame:
+    return pd.read_csv(
+        config_dir / "interactive_brokers_connection.csv",
+        comment="#",
+    )
