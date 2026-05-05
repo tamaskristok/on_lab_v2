@@ -1,5 +1,6 @@
 asset,symbol,con_id,security_type,exchange,currency,what_to_show,volume_policy,notes
 XAUUSD,XAUUSD,457068913,CFD,SMART,USD,MIDPOINT,missing,Gold/USD CFD candidate
 XAGUSD,XAGUSD,457068916,CFD,SMART,USD,MIDPOINT,missing,Silver/USD CFD candidate
+EURUSD,EUR,12087792,CASH,IDEALPRO,USD,MIDPOINT,missing,EUR/USD forex candidate
 US500,IBUS500,111767871,CFD,SMART,USD,MIDPOINT,missing,US 500 CFD candidate
 DAX,DAX,825711,IND,EUREX,EUR,TRADES,zero,DAX index fallback candidate

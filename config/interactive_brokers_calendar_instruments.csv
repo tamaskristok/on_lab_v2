@@ -1,0 +1,6 @@
+asset,symbol,con_id,security_type,exchange,currency,calendar_source,notes
+XAUUSD,XAUUSD,457068913,CFD,SMART,USD,interactive_brokers_historical_schedule,Gold/USD CFD schedule
+XAGUSD,XAGUSD,457068916,CFD,SMART,USD,interactive_brokers_historical_schedule,Silver/USD CFD schedule
+EURUSD,EUR,12087792,CASH,IDEALPRO,USD,interactive_brokers_historical_schedule,EUR/USD forex schedule
+US500,IBUS500,111767871,CFD,SMART,USD,interactive_brokers_historical_schedule,US 500 CFD schedule
+DAX,DAX,825711,IND,EUREX,EUR,interactive_brokers_historical_schedule,DAX EUREX index schedule
