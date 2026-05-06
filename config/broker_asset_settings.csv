@@ -1,8 +1,7 @@
 broker,asset,price_scale
-binance,BTCUSD,1
-dukascopy,EURUSD,100000
-dukascopy,XAUUSD,100
-dukascopy,XAGUSD,1000
-dukascopy,US500,100
-dukascopy,DAX,100
-dukascopy,BTCUSD,100
+dukascopy,EURUSD,1
+dukascopy,XAUUSD,10
+dukascopy,XAGUSD,1
+dukascopy,US500,10
+dukascopy,DAX,10
+dukascopy,BTCUSD,0.1

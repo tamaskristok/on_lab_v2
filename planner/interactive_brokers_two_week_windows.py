@@ -15,33 +15,24 @@ class InteractiveBrokersTwoWeekWindow:
 def generate_interactive_brokers_two_week_windows(
     window: TimeWindow,
 ) -> list[InteractiveBrokersTwoWeekWindow]:
-    windows: list[InteractiveBrokersTwoWeekWindow] = []
+    month_end_exclusive = window.end_date + timedelta(days=1)
 
-    first_end_date = min(
-        window.start_date.replace(day=15),
-        window.end_date + timedelta(days=1),
-    )
+    end_dates = [
+        window.start_date + timedelta(days=14),
+        window.start_date + timedelta(days=28),
+        month_end_exclusive,
+    ]
 
-    windows.append(
+    unique_end_dates = sorted(set(end_dates))
+
+    return [
         InteractiveBrokersTwoWeekWindow(
             end_datetime=datetime.combine(
-                first_end_date,
+                end_date,
                 time.min,
                 tzinfo=timezone.utc,
             ),
             duration="2 W",
         )
-    )
-
-    windows.append(
-        InteractiveBrokersTwoWeekWindow(
-            end_datetime=datetime.combine(
-                window.end_date + timedelta(days=1),
-                time.min,
-                tzinfo=timezone.utc,
-            ),
-            duration="2 W",
-        )
-    )
-
-    return windows
+        for end_date in unique_end_dates
+    ]
