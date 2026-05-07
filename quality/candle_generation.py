@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 from quality.calendar_alignment import load_calendar
@@ -229,6 +230,197 @@ def _broker_columns(
     ]
 
 
+def _extract_broker_names(
+    df: pd.DataFrame,
+) -> list[str]:
+    broker_names = []
+
+    for column in df.columns:
+        if not column.endswith("_close"):
+            continue
+
+        if column.startswith("generated_"):
+            continue
+
+        if column in {
+            "close_min",
+            "close_max",
+        }:
+            continue
+
+        broker_names.append(
+            column.removesuffix("_close")
+        )
+
+    return sorted(broker_names)
+
+
+def _build_preferred_broker_order(
+    quality_wide_df: pd.DataFrame,
+) -> dict[str, list[str]]:
+    broker_names = _extract_broker_names(
+        quality_wide_df,
+    )
+
+    preferred_order_by_asset: dict[str, list[str]] = {}
+
+    for asset, asset_df in quality_wide_df.groupby("asset"):
+        close_columns = [
+            f"{broker_name}_close"
+            for broker_name in broker_names
+            if f"{broker_name}_close" in asset_df.columns
+        ]
+
+        if not close_columns:
+            preferred_order_by_asset[asset] = []
+            continue
+
+        close_reference = asset_df[close_columns].median(
+            axis=1,
+            skipna=True,
+        )
+
+        records = []
+
+        for broker in broker_names:
+            close_column = f"{broker}_close"
+
+            if close_column not in asset_df.columns:
+                continue
+
+            broker_present_mask = asset_df[close_column].notna()
+            broker_rows = int(broker_present_mask.sum())
+
+            if broker_rows == 0:
+                continue
+
+            coverage_ratio = broker_rows / len(asset_df)
+            broker_close = asset_df[close_column]
+
+            abs_diff_pct = (
+                (broker_close - close_reference).abs()
+                / close_reference
+                * 100
+            )
+
+            records.append(
+                {
+                    "broker": broker,
+                    "coverage_ratio": coverage_ratio,
+                    "mean_abs_diff_pct": abs_diff_pct.mean(),
+                }
+            )
+
+        ranking_df = pd.DataFrame(records)
+
+        if ranking_df.empty:
+            preferred_order_by_asset[asset] = []
+            continue
+
+        ranking_df = ranking_df.sort_values(
+            [
+                "coverage_ratio",
+                "mean_abs_diff_pct",
+                "broker",
+            ],
+            ascending=[
+                False,
+                True,
+                True,
+            ],
+        )
+
+        preferred_order_by_asset[asset] = ranking_df["broker"].tolist()
+
+    return preferred_order_by_asset
+
+
+def _apply_preferred_broker_ohlc(
+    quality_wide_df: pd.DataFrame,
+) -> pd.DataFrame:
+    generated_df = quality_wide_df.copy()
+
+    preferred_order_by_asset = _build_preferred_broker_order(
+        quality_wide_df,
+    )
+
+    generated_df["generated_open"] = np.nan
+    generated_df["generated_high"] = np.nan
+    generated_df["generated_low"] = np.nan
+    generated_df["generated_close"] = np.nan
+    generated_df["generated_volume"] = pd.NA
+    generated_df["selected_broker"] = pd.NA
+
+    for asset, brokers in preferred_order_by_asset.items():
+        if not brokers:
+            continue
+
+        asset_mask = generated_df["asset"] == asset
+        asset_index = generated_df.index[asset_mask]
+
+        if len(asset_index) == 0:
+            continue
+
+        for field in [
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume",
+        ]:
+            field_columns = [
+                f"{broker}_{field}"
+                for broker in brokers
+                if f"{broker}_{field}" in generated_df.columns
+            ]
+
+            if not field_columns:
+                continue
+
+            generated_df.loc[
+                asset_index,
+                f"generated_{field}",
+            ] = (
+                generated_df
+                .loc[asset_index, field_columns]
+                .bfill(axis=1)
+                .iloc[:, 0]
+            )
+
+        close_columns = [
+            f"{broker}_close"
+            for broker in brokers
+            if f"{broker}_close" in generated_df.columns
+        ]
+
+        if not close_columns:
+            continue
+
+        close_presence_df = generated_df.loc[
+            asset_index,
+            close_columns,
+        ].notna()
+
+        selected_broker_series = close_presence_df.idxmax(axis=1)
+        has_selected_broker = close_presence_df.any(axis=1)
+
+        selected_broker_series = selected_broker_series.where(
+            has_selected_broker,
+            pd.NA,
+        )
+
+        selected_broker_series = selected_broker_series.str.removesuffix(
+            "_close"
+        )
+
+        generated_df.loc[
+            asset_index,
+            "selected_broker",
+        ] = selected_broker_series
+
+    return generated_df
+
+
 def generate_candles_from_brokers(
     quality_wide_df: pd.DataFrame,
     *,
@@ -273,6 +465,12 @@ def generate_candles_from_brokers(
             skipna=True,
         )
         generated_df["generated_volume"] = pd.NA
+    elif method == 1:
+        method_name = "preferred_broker_ohlc"
+
+        generated_df = _apply_preferred_broker_ohlc(
+            generated_df,
+        )
     else:
         raise ValueError(f"Unsupported generation method: {method}")
 

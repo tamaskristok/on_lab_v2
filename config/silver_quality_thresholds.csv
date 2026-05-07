@@ -1,0 +1,8 @@
+asset,good_close_diff_pct_threshold,warning_close_diff_pct_threshold,outlier_abs_return_pct_threshold
+DEFAULT,0.05,0.25,1.00
+BTCUSD,0.10,0.30,2.00
+XAUUSD,0.05,0.20,0.50
+XAGUSD,0.05,0.25,1.00
+EURUSD,0.02,0.10,0.20
+US500,0.05,0.20,0.75
+DAX,0.05,0.20,0.75
