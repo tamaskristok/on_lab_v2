@@ -19,6 +19,7 @@ SILVER_OHLCV_COLUMNS = [
     "consensus_quality",
     "generation_method_id",
     "generation_method",
+    "selected_broker",
     "broker_count",
     "close_diff",
     "close_diff_pct",

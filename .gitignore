@@ -1,6 +1,8 @@
 .env
 .venv/
 venv/
+outputs/
+multirun/
 __pycache__/
 *.py[cod]
 .ipynb_checkpoints/
