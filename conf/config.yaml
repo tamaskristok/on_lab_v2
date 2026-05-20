@@ -1,0 +1,52 @@
+defaults:
+  - config_schema
+  - _self_
+
+project:
+  name: on_lab_v2
+
+paths:
+  config_dir: config
+  data_dir: data
+  env_path: .env
+
+config_files:
+  broker_strategy: broker_strategy.csv
+  broker_asset_matrix: broker_asset_matrix.csv
+  broker_asset_settings: broker_asset_settings.csv
+  download_period: download_period.csv
+  saxo_bank_instruments: saxo_bank_instruments.csv
+  interactive_brokers_instruments: interactive_brokers_instruments.csv
+  interactive_brokers_calendar_instruments: interactive_brokers_calendar_instruments.csv
+  silver_quality_thresholds: silver_quality_thresholds.csv
+
+azure:
+  container_name: market-data
+
+run:
+  start_month: null
+  end_month: null
+  interval: 1m
+  source: azure
+  print_progress: true
+
+filters:
+  brokers: null
+  assets: null
+
+saxo:
+  base_url: https://gateway.saxobank.com/sim/openapi
+
+interactive_brokers:
+  host: host.docker.internal
+  port: 7497
+  client_id: 120
+  readonly: true
+  timeout_sec: 30
+
+silver:
+  generation_methods:
+    - 0
+    - 1
+  overwrite: false
+  upload: false
