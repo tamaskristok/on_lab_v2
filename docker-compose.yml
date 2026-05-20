@@ -12,3 +12,18 @@ services:
       - ./data:/app/data
     environment:
       - PYTHONPATH=/app
+
+  streamlit:
+    build: .
+    container_name: on-lab-v2-streamlit
+    working_dir: /app
+    env_file:
+      - .env
+    ports:
+      - "8501:8501"
+    volumes:
+      - .:/app
+      - ./data:/app/data
+    environment:
+      - PYTHONPATH=/app
+    command: streamlit run app/streamlit_app.py --server.address=0.0.0.0 --server.port=8501
