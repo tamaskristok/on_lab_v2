@@ -3,6 +3,25 @@ from __future__ import annotations
 import streamlit as st
 
 
+st.markdown(
+    """
+    <style>
+    [data-testid="stSidebarNav"] a {
+        font-size: 1.15rem;
+        font-weight: 600;
+        padding-top: 0.6rem;
+        padding-bottom: 0.6rem;
+    }
+
+    [data-testid="stSidebarNav"] span {
+        font-size: 1.15rem;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+
 home_page = st.Page(
     "views/home.py",
     title="Főoldal",
@@ -10,12 +29,12 @@ home_page = st.Page(
 
 downloads_page = st.Page(
     "views/downloads.py",
-    title="Downloads",
+    title="Adat letöltés",
 )
 
 charts_page = st.Page(
     "views/charts.py",
-    title="Charts",
+    title="Elemzés",
 )
 
 navigation = st.navigation(

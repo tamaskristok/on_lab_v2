@@ -50,3 +50,9 @@ st.write(
     A hagyományos pénzügyi elemzések gyakran feltételezik a folyamatok állandóságát, azonban a valós világ - különösen a gazdaság - folyamatosan változik, hirtelen "rezsimváltásokkal" és váratlan eseményekkel. Hogyan integrálhatók a száraz numerikus adatok mellé a hírekben rejlő szöveges információk egy közös modellbe? Képesek-e az új generációs mélytanuló architektúrák (pl. Transzformerek, State Space Modellek) nemcsak előrejelezni egy árfolyamot vagy a GDP-t, hanem megérteni a mögöttes okokat is ("miért" történt)? Építhető-e olyan "alapmodell" (foundation model), amely kevés tanítóadatból is képes alkalmazkodni új piaci helyzetekhez? Jelen téma célja a legkorszerűbb deep learning megoldások, különösen az idősoros alapmodellek és a multimodális adatfúzió (szöveg és numerikus adat együttes kezelése) vizsgálata. A hallgató feladata a releváns, heterogén adatforrások feltárása, begyűjtése és tisztítása, kiemelt figyelmet fordítva a jogi és etikai aspektusokra, valamint az EU AI Act előírásainak való megfelelésre. Ezt követően a tisztított adatokon olyan architektúrák (pl. RAG - Retrieval-Augmented Generation, domén-specifikus LLM-ek) kutatása és implementálása a cél, amelyek a gazdasági híreket és a idősorokat egy közös látens térben kezelik a pontosabb nowcast és forecast érdekében. A feladat jellege kifejezetten kutatás-orientált, a téma elméleti kihívásokat tartalmaz, ezért a jelentkezésnél elvárás a tudományos ambíció. A munka célja nem csupán szoftverfejlesztés, hanem publikálható eredmények elérése és TDK dolgozat készítése. A téma diplomáig, illetve akár PhD témaként is folytatható.
     """
 )
+
+st.divider()
+
+st.markdown(
+    "[Link](https://iw.tmit.bme.hu/education/studenttopic/TMIT2026-009)"
+)
