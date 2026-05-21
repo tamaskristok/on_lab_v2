@@ -11,13 +11,23 @@ from hydra.core.config_store import ConfigStore
 from omegaconf import OmegaConf
 
 from config_loader.hydra_config import AppConfig
+from uploaders.azure_blob import init_azure_client
 from validators.config_files import validate_config_files
+
+
+try:
+    asyncio.get_event_loop_policy().get_event_loop()
+except RuntimeError:
+    asyncio.set_event_loop(
+        asyncio.new_event_loop()
+    )
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 CONFIG_DIR = PROJECT_ROOT / "config"
 HYDRA_CONFIG_DIR = PROJECT_ROOT / "conf"
 BROKER_ASSET_MATRIX_PATH = CONFIG_DIR / "broker_asset_matrix.csv"
+BROKER_STRATEGY_PATH = CONFIG_DIR / "broker_strategy.csv"
 
 
 cs = ConfigStore.instance()
@@ -47,9 +57,17 @@ def load_broker_asset_matrix() -> pd.DataFrame:
     return pd.read_csv(BROKER_ASSET_MATRIX_PATH)
 
 
+@st.cache_data
+def load_broker_strategy() -> pd.DataFrame:
+    return pd.read_csv(
+        BROKER_STRATEGY_PATH,
+        comment="#",
+    )
+
+
 def ensure_event_loop() -> None:
     try:
-        asyncio.get_event_loop()
+        asyncio.get_event_loop_policy().get_event_loop()
     except RuntimeError:
         asyncio.set_event_loop(
             asyncio.new_event_loop()
@@ -102,11 +120,15 @@ def validate_month_range(
         raise ValueError("Csak teljesen lezárt múltbeli hónap kérhető le.")
 
 
-def get_brokers(
-    broker_asset_matrix_df: pd.DataFrame,
+def get_enabled_brokers(
+    broker_strategy_df: pd.DataFrame,
 ) -> list[str]:
+    enabled_df = broker_strategy_df[
+        broker_strategy_df["enabled"] == True
+    ]
+
     return (
-        broker_asset_matrix_df["broker"]
+        enabled_df["broker"]
         .dropna()
         .astype(str)
         .sort_values()
@@ -142,6 +164,248 @@ def get_assets(
     return available_assets
 
 
+def month_range(
+    *,
+    start_month: str,
+    end_month: str,
+) -> list[tuple[int, int]]:
+    periods = pd.period_range(
+        start=start_month,
+        end=end_month,
+        freq="M",
+    )
+
+    return [
+        (
+            period.year,
+            period.month,
+        )
+        for period in periods
+    ]
+
+
+def bronze_success_blob_name(
+    *,
+    broker: str,
+    asset: str,
+    year: int,
+    month: int,
+) -> str:
+    return (
+        f"bronze/{broker}/{asset.lower()}/{year}/{month:02d}/_SUCCESS"
+    )
+
+
+def broker_asset_pairs(
+    *,
+    broker_asset_matrix_df: pd.DataFrame,
+    broker_options: list[str],
+    selected_brokers: list[str] | None,
+    selected_assets: list[str] | None,
+) -> list[dict[str, str]]:
+    brokers_for_run = (
+        broker_options
+        if selected_brokers is None
+        else selected_brokers
+    )
+
+    asset_columns = [
+        column
+        for column in broker_asset_matrix_df.columns
+        if column != "broker"
+    ]
+
+    assets_for_run = (
+        asset_columns
+        if selected_assets is None
+        else selected_assets
+    )
+
+    rows = []
+
+    for _, broker_row in broker_asset_matrix_df.iterrows():
+        broker = str(broker_row["broker"])
+
+        if broker not in brokers_for_run:
+            continue
+
+        for asset in assets_for_run:
+            if asset not in broker_row.index:
+                continue
+
+            broker_symbol = broker_row[asset]
+
+            if pd.isna(broker_symbol):
+                continue
+
+            broker_symbol = str(broker_symbol).strip()
+
+            if broker_symbol == "" or broker_symbol == "NOK":
+                continue
+
+            rows.append(
+                {
+                    "broker": broker,
+                    "asset": asset,
+                    "broker_symbol": broker_symbol,
+                }
+            )
+
+    return rows
+
+
+def build_download_targets(
+    *,
+    broker_asset_matrix_df: pd.DataFrame,
+    broker_options: list[str],
+    selected_brokers: list[str] | None,
+    selected_assets: list[str] | None,
+    start_month: str,
+    end_month: str,
+) -> pd.DataFrame:
+    rows = []
+
+    pairs = broker_asset_pairs(
+        broker_asset_matrix_df=broker_asset_matrix_df,
+        broker_options=broker_options,
+        selected_brokers=selected_brokers,
+        selected_assets=selected_assets,
+    )
+
+    for pair in pairs:
+        for year, month in month_range(
+            start_month=start_month,
+            end_month=end_month,
+        ):
+            rows.append(
+                {
+                    "broker": pair["broker"],
+                    "asset": pair["asset"],
+                    "broker_symbol": pair["broker_symbol"],
+                    "year": year,
+                    "month": month,
+                    "month_key": f"{year}-{month:02d}",
+                    "success_blob_name": bronze_success_blob_name(
+                        broker=pair["broker"],
+                        asset=pair["asset"],
+                        year=year,
+                        month=month,
+                    ),
+                }
+            )
+
+    return pd.DataFrame(rows)
+
+
+def attach_existing_success_flags(
+    *,
+    targets_df: pd.DataFrame,
+    env_path: Path,
+    container_name: str,
+) -> pd.DataFrame:
+    if targets_df.empty:
+        checked_df = targets_df.copy()
+        checked_df["already_uploaded"] = pd.Series(dtype=bool)
+        return checked_df
+
+    blob_service_client, resolved_container_name = init_azure_client(
+        env_path=env_path,
+        container_name=container_name,
+    )
+    container_client = blob_service_client.get_container_client(
+        resolved_container_name,
+    )
+
+    checked_df = targets_df.copy()
+
+    checked_df["already_uploaded"] = checked_df["success_blob_name"].apply(
+        lambda blob_name: container_client.get_blob_client(blob_name).exists()
+    )
+
+    return checked_df
+
+
+def get_missing_targets(
+    *,
+    targets_df: pd.DataFrame,
+) -> pd.DataFrame:
+    return (
+        targets_df[~targets_df["already_uploaded"]]
+        .copy()
+        .reset_index(drop=True)
+    )
+
+
+def summarize_targets(
+    *,
+    targets_df: pd.DataFrame,
+    missing_targets_df: pd.DataFrame,
+) -> dict[str, int]:
+    return {
+        "ossz_cel": len(targets_df),
+        "mar_letoltve": int(targets_df["already_uploaded"].sum())
+        if "already_uploaded" in targets_df.columns
+        else 0,
+        "futtatando": len(missing_targets_df),
+    }
+
+
+def build_check_key(
+    *,
+    selected_brokers: list[str] | None,
+    selected_assets: list[str] | None,
+    start_month: str,
+    end_month: str,
+    saxo_access_token: str,
+    tws_confirmed: bool,
+) -> tuple:
+    return (
+        tuple(sorted(selected_brokers)) if selected_brokers is not None else None,
+        tuple(sorted(selected_assets)) if selected_assets is not None else None,
+        start_month,
+        end_month,
+        bool(saxo_access_token.strip()),
+        tws_confirmed,
+    )
+
+
+def run_one_download_target(
+    *,
+    target: pd.Series,
+    cfg: AppConfig,
+    saxo_access_token: str,
+    run_monthly_ingestion_from_config,
+) -> pd.DataFrame:
+    broker = str(target["broker"])
+    asset = str(target["asset"])
+    month_key = str(target["month_key"])
+
+    return run_monthly_ingestion_from_config(
+        start_month=month_key,
+        end_month=month_key,
+        brokers=[broker],
+        assets=[asset],
+        interval=cfg.run.interval,
+        config_dir=PROJECT_ROOT / Path(cfg.paths.config_dir),
+        env_path=PROJECT_ROOT / Path(cfg.paths.env_path),
+        data_dir=PROJECT_ROOT / Path(cfg.paths.data_dir),
+        saxo_access_token=(
+            saxo_access_token
+            if broker == "saxo_bank"
+            else None
+        ),
+        saxo_base_url=cfg.saxo.base_url,
+        saxo_print_progress=cfg.run.print_progress,
+        interactive_brokers_host=cfg.interactive_brokers.host,
+        interactive_brokers_port=cfg.interactive_brokers.port,
+        interactive_brokers_client_id=cfg.interactive_brokers.client_id,
+        interactive_brokers_readonly=cfg.interactive_brokers.readonly,
+        interactive_brokers_timeout_sec=cfg.interactive_brokers.timeout_sec,
+        interactive_brokers_print_progress=cfg.run.print_progress,
+        dukascopy_print_progress=cfg.run.print_progress,
+    )
+
+
 cfg = load_hydra_config()
 
 st.title("Bróker adatok letöltése")
@@ -149,9 +413,10 @@ st.title("Bróker adatok letöltése")
 st.write("Letöltési paraméterek kiválasztása:")
 
 broker_asset_matrix_df = load_broker_asset_matrix()
+broker_strategy_df = load_broker_strategy()
 
-broker_options = get_brokers(
-    broker_asset_matrix_df,
+broker_options = get_enabled_brokers(
+    broker_strategy_df,
 )
 
 broker_mode = st.radio(
@@ -167,14 +432,12 @@ if broker_mode == "Minden bróker":
     selected_brokers = None
     selected_brokers_for_ui = broker_options
 else:
-    broker_choices = st.multiselect(
+    selected_brokers = st.multiselect(
         "Bróker",
         options=broker_options,
         default=[],
     )
-
-    selected_brokers = broker_choices
-    selected_brokers_for_ui = broker_choices
+    selected_brokers_for_ui = selected_brokers
 
 asset_options = get_assets(
     broker_asset_matrix_df=broker_asset_matrix_df,
@@ -223,6 +486,15 @@ if "download_check_completed" not in st.session_state:
 if "download_check_error" not in st.session_state:
     st.session_state["download_check_error"] = ""
 
+if "download_check_key" not in st.session_state:
+    st.session_state["download_check_key"] = None
+
+if "download_targets_df" not in st.session_state:
+    st.session_state["download_targets_df"] = None
+
+if "download_missing_targets_df" not in st.session_state:
+    st.session_state["download_missing_targets_df"] = None
+
 if "saxo_access_token" not in st.session_state:
     st.session_state["saxo_access_token"] = ""
 
@@ -232,56 +504,32 @@ if "tws_confirmed" not in st.session_state:
 if "download_results_df" not in st.session_state:
     st.session_state["download_results_df"] = None
 
-check_requested = st.button(
-    "Ellenőrzés",
-    use_container_width=True,
-)
-
-if check_requested:
-    try:
-        validate_download_config(cfg)
-        validate_month_range(
-            start_month=start_month,
-            end_month=end_month,
-        )
-        st.session_state["download_check_completed"] = True
-        st.session_state["download_check_error"] = ""
-    except Exception as error:
-        st.session_state["download_check_completed"] = False
-        st.session_state["download_check_error"] = str(error)
-
-if st.session_state["download_check_error"]:
-    st.error(st.session_state["download_check_error"])
-
-if st.session_state["download_check_completed"]:
-    st.success("Config validáció sikeres.")
-
-    st.subheader("Futtatási előfeltételek")
-
-    if selected_brokers is None or "saxo_bank" in selected_brokers:
-        st.session_state["saxo_access_token"] = st.text_input(
-            "Saxo access token",
-            value=st.session_state["saxo_access_token"],
-            type="password",
-            help="Csak Saxo Bank futtatásakor szükséges.",
-        )
-
-    if selected_brokers is None or "interactive_brokers" in selected_brokers:
-        st.warning(
-            "Interactive Brokers futtatásához indítsd el a TWS-t, "
-            "engedélyezd az API kapcsolatot, és ellenőrizd a 7497-es portot."
-        )
-
-        st.session_state["tws_confirmed"] = st.checkbox(
-            "A TWS fut, és az API kapcsolat engedélyezve van.",
-            value=st.session_state["tws_confirmed"],
-        )
-
 saxo_required = selected_brokers is None or "saxo_bank" in selected_brokers
 tws_required = (
     selected_brokers is None
     or "interactive_brokers" in selected_brokers
 )
+
+st.subheader("Futtatási előfeltételek")
+
+if saxo_required:
+    st.session_state["saxo_access_token"] = st.text_input(
+        "Saxo access token",
+        value=st.session_state["saxo_access_token"],
+        type="password",
+        help="Csak Saxo Bank futtatásakor szükséges.",
+    )
+
+if tws_required:
+    st.warning(
+        "Interactive Brokers futtatásához indítsd el a TWS-t, "
+        "engedélyezd az API kapcsolatot, és ellenőrizd a 7497-es portot."
+    )
+
+    st.session_state["tws_confirmed"] = st.checkbox(
+        "A TWS fut, és az API kapcsolat engedélyezve van.",
+        value=st.session_state["tws_confirmed"],
+    )
 
 saxo_ready = (
     not saxo_required
@@ -293,10 +541,127 @@ tws_ready = (
     or st.session_state["tws_confirmed"]
 )
 
+current_check_key = build_check_key(
+    selected_brokers=selected_brokers,
+    selected_assets=selected_assets,
+    start_month=start_month,
+    end_month=end_month,
+    saxo_access_token=st.session_state["saxo_access_token"],
+    tws_confirmed=st.session_state["tws_confirmed"],
+)
+
+check_requested = st.button(
+    "Ellenőrzés",
+    use_container_width=True,
+)
+
+if check_requested:
+    try:
+        validate_download_config(cfg)
+
+        validate_month_range(
+            start_month=start_month,
+            end_month=end_month,
+        )
+
+        if selected_brokers is not None and not selected_brokers:
+            raise ValueError("Legalább egy brókert ki kell választani.")
+
+        if selected_assets is not None and not selected_assets:
+            raise ValueError("Legalább egy tickert ki kell választani.")
+
+        if not saxo_ready:
+            raise ValueError("Saxo Bank futtatásához access token szükséges.")
+
+        if not tws_ready:
+            raise ValueError("Interactive Brokers futtatásához TWS megerősítés szükséges.")
+
+        targets_df = build_download_targets(
+            broker_asset_matrix_df=broker_asset_matrix_df,
+            broker_options=broker_options,
+            selected_brokers=selected_brokers,
+            selected_assets=selected_assets,
+            start_month=start_month,
+            end_month=end_month,
+        )
+
+        if targets_df.empty:
+            raise ValueError("Nincs futtatható broker-ticker-hónap kombináció.")
+
+        targets_df = attach_existing_success_flags(
+            targets_df=targets_df,
+            env_path=PROJECT_ROOT / Path(cfg.paths.env_path),
+            container_name=cfg.azure.container_name,
+        )
+
+        missing_targets_df = get_missing_targets(
+            targets_df=targets_df,
+        )
+
+        st.session_state["download_targets_df"] = targets_df
+        st.session_state["download_missing_targets_df"] = missing_targets_df
+        st.session_state["download_check_completed"] = True
+        st.session_state["download_check_error"] = ""
+        st.session_state["download_check_key"] = current_check_key
+        st.session_state["download_results_df"] = None
+
+    except Exception as error:
+        st.session_state["download_check_completed"] = False
+        st.session_state["download_check_error"] = str(error)
+        st.session_state["download_check_key"] = None
+        st.session_state["download_targets_df"] = None
+        st.session_state["download_missing_targets_df"] = None
+
+if st.session_state["download_check_error"]:
+    st.error(st.session_state["download_check_error"])
+
+check_is_current = (
+    st.session_state["download_check_completed"]
+    and st.session_state["download_check_key"] == current_check_key
+)
+
+if st.session_state["download_check_completed"]:
+    if check_is_current:
+        targets_df = st.session_state["download_targets_df"]
+        missing_targets_df = st.session_state["download_missing_targets_df"]
+
+        summary = summarize_targets(
+            targets_df=targets_df,
+            missing_targets_df=missing_targets_df,
+        )
+
+        st.success("Config, előfeltétel és Azure _SUCCESS ellenőrzés sikeres.")
+
+        st.write(
+            {
+                "összes cél": summary["ossz_cel"],
+                "már letöltve": summary["mar_letoltve"],
+                "futtatandó": summary["futtatando"],
+            }
+        )
+
+        with st.expander("Futtatandó célok"):
+            st.dataframe(
+                missing_targets_df[
+                    [
+                        "broker",
+                        "asset",
+                        "broker_symbol",
+                        "month_key",
+                        "already_uploaded",
+                    ]
+                ],
+                use_container_width=True,
+            )
+    else:
+        st.warning(
+            "A paraméterek változtak. Indítás előtt futtasd újra az ellenőrzést."
+        )
+
 start_disabled = (
-    not st.session_state["download_check_completed"]
-    or not saxo_ready
-    or not tws_ready
+    not check_is_current
+    or st.session_state["download_missing_targets_df"] is None
+    or st.session_state["download_missing_targets_df"].empty
 )
 
 start_requested = st.button(
@@ -308,38 +673,52 @@ start_requested = st.button(
 if start_requested:
     ensure_event_loop()
 
-    from pipelines.monthly_ingestion_runner import (
-        run_monthly_ingestion_from_config,
-    )
+    from pipelines.monthly_ingestion_runner import run_monthly_ingestion_from_config
+
+    missing_targets_df = st.session_state["download_missing_targets_df"]
+
+    all_results = []
+
+    progress_bar = st.progress(0)
+    status_placeholder = st.empty()
 
     with st.spinner("Letöltés folyamatban..."):
-        results_df = run_monthly_ingestion_from_config(
-            start_month=start_month,
-            end_month=end_month,
-            brokers=selected_brokers,
-            assets=selected_assets,
-            interval=cfg.run.interval,
-            config_dir=PROJECT_ROOT / Path(cfg.paths.config_dir),
-            env_path=PROJECT_ROOT / Path(cfg.paths.env_path),
-            data_dir=PROJECT_ROOT / Path(cfg.paths.data_dir),
-            saxo_access_token=(
-                st.session_state["saxo_access_token"]
-                if saxo_required
-                else None
-            ),
-            saxo_base_url=cfg.saxo.base_url,
-            saxo_print_progress=cfg.run.print_progress,
-            interactive_brokers_host=cfg.interactive_brokers.host,
-            interactive_brokers_port=cfg.interactive_brokers.port,
-            interactive_brokers_client_id=cfg.interactive_brokers.client_id,
-            interactive_brokers_readonly=cfg.interactive_brokers.readonly,
-            interactive_brokers_timeout_sec=cfg.interactive_brokers.timeout_sec,
-            interactive_brokers_print_progress=cfg.run.print_progress,
-            dukascopy_print_progress=cfg.run.print_progress,
-        )
+        total_targets = len(missing_targets_df)
 
-    st.session_state["download_results_df"] = results_df
-    st.success("Letöltés befejeződött.")
+        for position, (_, target) in enumerate(
+            missing_targets_df.iterrows(),
+            start=1,
+        ):
+            broker = str(target["broker"])
+            asset = str(target["asset"])
+            month_key = str(target["month_key"])
+
+            status_placeholder.write(
+                f"Fut: {broker}, {asset}, {month_key}"
+            )
+
+            results_df = run_one_download_target(
+                target=target,
+                cfg=cfg,
+                saxo_access_token=st.session_state["saxo_access_token"],
+                run_monthly_ingestion_from_config=run_monthly_ingestion_from_config,
+            )
+
+            all_results.append(results_df)
+
+            progress_bar.progress(
+                int(position / total_targets * 100)
+            )
+
+    if all_results:
+        st.session_state["download_results_df"] = pd.concat(
+            all_results,
+            ignore_index=True,
+        )
+        st.success("Letöltés befejeződött.")
+    else:
+        st.session_state["download_results_df"] = pd.DataFrame()
+        st.warning("Nem történt letöltés.")
 
 if st.session_state["download_results_df"] is not None:
     st.subheader("Letöltési eredmény")
@@ -358,7 +737,10 @@ st.write(
         "assets": selected_assets,
         "start_month": start_month,
         "end_month": end_month,
+        "saxo_required": saxo_required,
         "saxo_token_provided": bool(st.session_state["saxo_access_token"]),
+        "tws_required": tws_required,
         "tws_confirmed": st.session_state["tws_confirmed"],
+        "check_is_current": check_is_current,
     }
 )

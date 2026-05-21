@@ -32,6 +32,11 @@ downloads_page = st.Page(
     title="Adat letöltés",
 )
 
+silver_upload_page = st.Page(
+    "views/silver_upload.py",
+    title="Silver feltöltés",
+)
+
 charts_page = st.Page(
     "views/charts.py",
     title="Elemzés",
@@ -41,6 +46,7 @@ navigation = st.navigation(
     [
         home_page,
         downloads_page,
+        silver_upload_page,
         charts_page,
     ]
 )

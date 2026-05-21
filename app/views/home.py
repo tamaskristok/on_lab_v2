@@ -20,7 +20,7 @@ with logo_center_col:
     if BME_LOGO_PATH.exists():
         st.image(
             BME_LOGO_PATH,
-            use_container_width=True,
+            width="stretch",
         )
     else:
         st.warning("A BME logó nem található: app/assets/bme_logo.png")
@@ -55,4 +55,10 @@ st.divider()
 
 st.markdown(
     "[Link](https://iw.tmit.bme.hu/education/studenttopic/TMIT2026-009)"
+)
+
+st.divider()
+
+st.markdown(
+    "GitHub: [Link](https://github.com/tamaskristok/on_lab_v2)"
 )
