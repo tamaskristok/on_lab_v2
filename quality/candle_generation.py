@@ -421,6 +421,61 @@ def _apply_preferred_broker_ohlc(
     return generated_df
 
 
+def apply_open_master_continuity(
+    generated_df: pd.DataFrame,
+) -> pd.DataFrame:
+    fixed_df = generated_df.copy()
+
+    fixed_df = fixed_df.sort_values(
+        [
+            "asset",
+            "time",
+        ]
+    ).copy()
+
+    fixed_df["next_generated_open"] = (
+        fixed_df
+        .groupby("asset")["generated_open"]
+        .shift(-1)
+    )
+
+    continuity_mask = (
+        fixed_df["generated_open"].notna()
+        & fixed_df["generated_close"].notna()
+        & fixed_df["next_generated_open"].notna()
+    )
+
+    fixed_df.loc[
+        continuity_mask,
+        "generated_close",
+    ] = fixed_df.loc[
+        continuity_mask,
+        "next_generated_open",
+    ]
+
+    fixed_df["generated_high"] = fixed_df[
+        [
+            "generated_high",
+            "generated_open",
+            "generated_close",
+        ]
+    ].max(axis=1)
+
+    fixed_df["generated_low"] = fixed_df[
+        [
+            "generated_low",
+            "generated_open",
+            "generated_close",
+        ]
+    ].min(axis=1)
+
+    return fixed_df.drop(
+        columns=[
+            "next_generated_open",
+        ],
+    )
+
+
 def generate_candles_from_brokers(
     quality_wide_df: pd.DataFrame,
     *,
@@ -473,6 +528,10 @@ def generate_candles_from_brokers(
         )
     else:
         raise ValueError(f"Unsupported generation method: {method}")
+
+    generated_df = apply_open_master_continuity(
+        generated_df,
+    )
 
     generated_df["generation_method_id"] = method
     generated_df["generation_method"] = method_name
